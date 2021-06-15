@@ -1,0 +1,7 @@
+testing/
+screenshots/
+node_modules/
+.vscode/
+.tscache/
+
+.env
