@@ -85,14 +85,14 @@ But I haven't figured out how to login with nodejs. (Using node library httpntlm
 */
 async function loginYucataGUI(browser, username, password) {
     const page = await browser.newPage();
-    await page.goto('https://www.yucata.de/en');
+    const response = await page.goto('https://www.yucata.de/en');
     await page.type('#ctl00_ctl07_edtLogin', username);
     await page.type('#ctl00_ctl07_edtPassword', password);
     await Promise.all([
         await page.click("#ctl00_ctl07_btnLogin"),
         page.waitForNavigation({ waitUntil: 'networkidle0' }),
     ]);
-    const responseBody = await page.text();
+    const responseBody = await response.text();
     return [page, responseBody];
 }
 (async () => await main())();

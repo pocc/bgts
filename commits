@@ -1,0 +1,8 @@
+# Commit #2
+
+Add authentication for tabletopia and verify that it works.
+
+# Commit #3
+
+Add testing for all forms of existing authentication.
+* 6 tests: successful/fail auth for each website

@@ -1,4 +1,4 @@
-import { BGANums as PropNums } from '../index';
+import { BGANums as PropNums } from '../../index';
 
 export const modesJSON: PropNums = {
     "normal": 0,
