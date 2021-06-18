@@ -1,6 +1,6 @@
 
 require('dotenv').config()
-import { Page } from "puppeteer";
+import { Page, Browser } from "puppeteer";
 import { loginPuppeteer } from "../utils"
 
 /* This function will login to Yucata. Using the GUI avoids using NTLM authentication, which is more time
@@ -18,23 +18,25 @@ which is important in authentication.
 But I haven't figured out how to login with nodejs. (Using node library httpntlm produces a 401).
 Asked this on https://stackoverflow.com/questions/67978605
 */
-async function loginYucata(): Promise<Page | null> {
+export async function loginYucata(username: string, password: string): Promise<[Browser, Page, boolean]> {
     const [browser, page, pagetext] = await loginPuppeteer(
         "https://www.yucata.de/en",
-        process.env.USER as string,
-        process.env.PASSWORD as string,
+        username,
+        password,
         '#ctl00_ctl07_edtLogin',
         '#ctl00_ctl07_edtPassword',
-        '#ctl00_ctl07_btnLogin');
-    if (page.url() !== "https://www.yucata.de/en/AuthenticationFailed") {
-        await page.screenshot({"path":"screenshots/yucata.png"});
-        await browser.close()
-        return page
-    } else {
-        console.log("Authentication failed!")
-        await browser.close()
-        return null
-    }
+        '#ctl00_ctl07_btnLogin',
+        '#PlayerStatusContainer'); // Should only be seen after login
+    const success = page.url() === "https://www.yucata.de/en/AuthenticationFailed";
+    if (!success) console.log("Authentication failed!")
+    return [browser, page, success]
 }
 
-(async () => {await loginYucata();})();
+/* This logs in directly by getting cookies from yucata.de and then logging in with them. */
+export async function loginYucataDirect(username: string, password: string): Promise<Page | null> {
+    const resp = await fetch("https://www.yucata.de/", {
+      "method": "GET"
+    })
+    const cookies = resp.headers.get('set-cookie')
+    return null;
+}

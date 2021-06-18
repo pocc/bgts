@@ -3,9 +3,11 @@
     "target": "es2017",
     "module": "commonjs",
     "strictNullChecks": true,
+    "outDir": "build",
     "lib": [      
       "es2017",
       "DOM"
     ],
-  }
+  },
+  "include": ["src/**/*"]
 }

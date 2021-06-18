@@ -1,27 +1,26 @@
 /* Board Game Arena */
-import { HTTPRequest, Page, Browser } from "puppeteer";
 require('dotenv').config()
 import { URLSearchParams } from "url";
 import { loginPuppeteer } from "../utils"
 const puppeteer = require('puppeteer');
+import { Page, Browser } from 'puppeteer';
 
 
 /** Return a page that has been logged into Board Game Arena
  * Manually logging into BGA (page render and redirects) takes ~2400ms
  * Directly calling login takes (this fn)                      ~600ms
- * 
- * @param browser shared browser object 
+ *
+ * @param browser shared browser object
  * @param username BGA username
  * @param password BGA passwsord
  * @returns Page and response string. Response string is "" if authentication failed
 */
-async function loginBGADirect(username: string, password: string): (Promise<[Browser, string]>) {
+export async function loginBGADirect(username: string, password: string): (Promise<[Browser, Page, string]>) {
     const browser = await puppeteer.launch();
     const page: Page = await browser.newPage();
     await page.setRequestInterception(true);
 
-    page.on('request', async (interceptedRequest: HTTPRequest)  => {
-        console.log("Intercepting", interceptedRequest.url())
+    page.once('request', async (interceptedRequest) => {
         let postData = {
           "email": username,
           "password": password,
@@ -37,49 +36,40 @@ async function loginBGADirect(username: string, password: string): (Promise<[Bro
                 ...interceptedRequest.headers(),
                 "Content-Type": "application/x-www-form-urlencoded"
             }
-        };
-  
+        } as any;
+
         await interceptedRequest.continue(data);  // Request modified... finish sending!
     });
-  
+
     // Navigate, trigger the intercept, and resolve the response
-    const response = await page.goto('https://boardgamearena.com/account/account/login.html');
+    const logonUrl = 'https://boardgamearena.com/account/account/login.html'
+    const response = await page.goto(logonUrl);
+    if (response === null) {
+        console.log("Error fetching", logonUrl)
+        return [browser, page, ""]
+    }
     page.removeAllListeners('request'); // remove listeners we were using for this task.
     page.setRequestInterception(false)
-    const responseJson = await response.json();
-    if (responseJson['data']['success']) {
-        const responseBody = await response.text();
-        await page.goto('https://boardgamearena.com/community');
-        await page.screenshot({"path":"screenshots/boardgamearena_direct.png"})    
-        return [browser, responseBody];
-    } else {
-        return [browser, ""];
+    const responseJson = await response.json() as JSON;
+    const success = responseJson.hasOwnProperty('data') && responseJson['data']['success']
+    // Redirect from JSON blob
+    let responseText = "";
+    if (success) {
+        responseText = await response.text();
+        await page.goto('https://boardgamearena.com/');
     }
+    return [browser, page, responseText];
 }
 
 /* Login with GUI. Should be 2-4x slower */
-async function loginBGA() {
+export async function loginBGA(username: string, password: string): Promise<[Browser, Page, string]> {
     const [browser, page, pagetext] = await loginPuppeteer(
-        'https://en.boardgamearena.com/account',
-        process.env.USER as string,
-        process.env.PASSWORD as string,
+        'https://boardgamearena.com/account?redirect=%2F',
+        username,
+        password,
         '#username_input',
         '#password_input',
-        '#submit_login_button');
-    await page.goto('https://boardgamearena.com/community');
-    await page.waitForSelector('#community-module');
-    await page.screenshot({"path":"screenshots/boardgamerena.png"});
-    await browser.close();
+        '#submit_login_button',
+        '#login-status-wrap');  // signifies login is successful
+    return [browser, page, pagetext];
 }
-
-(async () => {
-    let user = process.env.USER as string;
-    let password = process.env.PASSWORD as string;
-    const [browser, pagetext] = await loginBGADirect(user, password);
-    if (pagetext) {
-        console.log("Authentication Successful!")
-    } else {
-        console.log("Authentication Failed!")
-    }
-    await browser.close();
-})();
