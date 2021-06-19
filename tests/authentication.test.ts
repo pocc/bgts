@@ -8,64 +8,64 @@ const username = process.env.USER as string;
 const password = process.env.PASSWORD as string;
 const email = process.env.EMAIL as string;
 
-jest.setTimeout(12000)
+jest.setTimeout(20000)
 
-test.concurrent('Test BGA direct auth', async () => {
-  const [browser, page, _] = await loginBGADirect(username, password);
-  expect(page.url()).toBe('https://boardgamearena.com/');
-  await browser.close();
+
+describe('BGA direct auth', () => {
+  test.concurrent('Test BGA direct auth', async () => {
+    const [browser, _, responseText] = await loginBGADirect(username, password);
+    expect(responseText).not.toBe("");
+    await browser.close();
+  });
+
+  // Skip this test. If BGA sees 2 bad password tests in 5s, a backoff timer will trigger
+  test.skip('Test BGA direct auth bad password', async () => {
+    const [browser, _, responseText] = await loginBGADirect(username, "badPassword");
+    expect(responseText).toBe("");
+    await browser.close();
+  });
 });
 
-test.concurrent('Test BGA direct auth bad password', async () => {
-  const [browser, __, responseText] = await loginBGADirect(username, "badPassword");
-  expect(responseText).toBe("");
-  await browser.close();
+describe('BGA auth', () => {
+  test.concurrent('Test BGA auth', async () => {
+    const [browser, _, success] = await loginBGA(username, password);
+    expect(success).toBe(true);
+    await browser.close();
+  });
+
+  // this needs to run after all other BGA tests
+  test('Test BGA auth bad password', async () => {
+    const [browser, _, success] = await loginBGA(username, "badPassword");
+    expect(success).toBe(false);
+    await browser.close();
+  });
 });
 
-test.concurrent('Test BGA auth', async () => {
-  const [browser, page, _] = await loginBGA(username, password);
-  expect(page.url()).toBe('https://en.boardgamearena.com/');
-  await browser.close();
+describe('Yucata auth', () => {
+  test.concurrent('Test Yucata auth', async () => {
+    const [browser, _, success] = await loginYucata(username, password);
+    expect(success).toBe(true);
+    await browser.close();
+  });
+
+  test('Test Yucata auth bad password', async () => {
+    const [browser, _, success] = await loginYucata(username, "badPassword");
+    expect(success).toBe(false);
+    await browser.close();
+  });
 });
 
-test.concurrent('Test BGA auth bad password', async () => {
-  const [browser, _, success] = await loginBGA(username, "badPassword");
-  expect(success).toBe(false);
-  await browser.close();
-});
+describe('Tabletopia auth', () => {
+  test.concurrent('Test Tabletopia auth', async () => {
+    const [browser, _, success] = await loginTabletopia(email, password);
+    expect(success).toBe(true);
+    await browser.close();
+  });
 
-test.concurrent('Test Yucata auth', async () => {
-  const [browser, page, _] = await loginYucata(username, password);
-  expect(page.url()).toBe('https://www.yucata.de/en/Overview');
-  await browser.close();
+  // Remove skip to run. Bad password will cause captcha to trigger, which kills testing
+  test.skip('Test Tabletopia auth bad password', async () => {
+    const [browser, _, success] = await loginTabletopia(email, "badPassword");
+    expect(success).toBe(false);
+    await browser.close();
+  });
 });
-
-test.concurrent('Test Yucata auth bad password', async () => {
-  const [browser, _, success] = await loginYucata(username, "badPassword");
-  expect(success).toBe(false);
-  await browser.close();
-});
-
-test.concurrent('Test Tabletopia auth', async () => {
-  const [browser, page, _] = await loginTabletopia(email, password);
-  expect(page.url()).toBe('https://tabletopia.com/');
-  await browser.close();
-});
-
-test.concurrent('Test BGA auth bad password', async () => {
-  const [browser, _, success] = await loginTabletopia(email, "badPassword");
-  expect(success).toBe(false);
-  await browser.close();
-});
-
-/*
-    ;
-    loginBGA(username, "abc123");
-    loginBGADirect(username, password);
-    loginBGADirect(username, "abc123");
-    loginTabletopia(username, password);
-    loginTabletopia(username, "abc123");
-    loginYucata(username, password);
-    loginYucata(username, "abc123");
-})();
-*/

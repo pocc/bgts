@@ -12,16 +12,21 @@ fetch("https://tabletopia.com/login",
     "body": "login=email&password=password",
     "method": "POST",
 });
+
+selector '#popup-profile' will show on success
 */
 export async function loginTabletopia(username: string, password: string): Promise<[Browser, Page, boolean]> {
-    const [browser, page, pagetext] = await loginPuppeteer(
+    const [browser, page, _] = await loginPuppeteer(
         "https://tabletopia.com/login",
         username,
         password,
         '[name=Login]',
         '[name=Password]',
-        '.overall-login__submit',
-        '#popup-profile'); // This should only be seen after login
-    const success = pagetext === ""
+        '.overall-login__submit');
+    await page.waitForNavigation();
+    const pageText = await page.content();
+    // if title remains login, login has failed
+    const success = !pageText.includes('Log In • Tabletopia');
+    if (!success) console.log(page.url(), "tabletopia authentication failed.")
     return [browser, page, success]
 }
