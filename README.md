@@ -134,3 +134,9 @@ X is done AND has tests
             * [ ] BGGUsername: string
             * [ ] favoriteGames: [game]
             * [ ] likedGames: [game]
+
+## Testing/Development
+
+To test, run `npm run test`, with jest installed.
+
+Run tslint with `tslint -p . --fix` to fix in place.

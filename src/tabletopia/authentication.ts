@@ -27,6 +27,6 @@ export async function loginTabletopia(username: string, password: string): Promi
     const pageText = await page.content();
     // if title remains login, login has failed
     const success = !pageText.includes('Log In • Tabletopia');
-    if (!success) console.log(page.url(), "tabletopia authentication failed.")
-    return [browser, page, success]
+    if (!success) { console.log(page.url(), "tabletopia authentication failed."); }
+    return [browser, page, success];
 }

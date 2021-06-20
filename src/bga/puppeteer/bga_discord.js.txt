@@ -37,33 +37,7 @@ class BoardGameArena) {
         logger.debug('LOGIN: ' + url + '\nEMAIL: ' + params['email']);
         await self.post(url, params);
         return await self.verify_privileged();
-    async function logout(self) {
-        /* Logout of current session. */;
-    }
-        url = self.base_url + '/account/account/logout.html';
-        params = {'dojo.preventCache': String(int(time.time()))};
-        url += '?' + urllib.parse.urlencode(params);
-        await self.fetch(url);
-    async function quit_table(self) {
-        /*  Quit the table if the player is currently at one */;
-    }
-        url = self.base_url + '/player';
-        resp = await self.fetch(url);
-        // Some version of "You are playing" or "Playing now at:"
-        matches = re.search(r'[Pp]laying[^<]*<a href=\"\/table\?table=(\d+)', resp);
-        if (matches !== null) {
-            table_id = matches[1];
-        }
-            logger.debug('Quitting table' + String(table_id));
-            quit_url = self.base_url + '/table/table/quitgame.html';
-            params = {
-                'table': table_id,
-                'neutralized': 'true',
-                's': 'table_quitgame',
-                'dojo.preventCache': String(int(time.time())),
-            };
-            quit_url += '?' + urllib.parse.urlencode(params);
-            await self.fetch(quit_url);
+
     async function quit_playing_with_friends(self) {
         /* There is a BGA feature called "playing with friends". Remove friends from the session */;
     }

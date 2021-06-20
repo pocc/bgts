@@ -3,7 +3,7 @@ import { BGANums as PropNums } from '../../index';
 export const modesJSON: PropNums = {
     "normal": 0,
     "training": 1
-}
+};
 export const speedsJSON: PropNums = {
     "fast": 0,
     "normal": 1,
@@ -17,8 +17,8 @@ export const speedsJSON: PropNums = {
     "1/day": 17,
     "1/2days": 19,
     "nolimit": 20,
-}
-export const karmasJSON: PropNums = {"0": 0, "50": 1, "65": 2, "75": 3, "85": 4}
+};
+export const karmasJSON: PropNums = {"0": 0, "50": 1, "65": 2, "75": 3, "85": 4};
 export const levels: Array<String> = [
     "beginner",
     "apprentice",
@@ -27,4 +27,4 @@ export const levels: Array<String> = [
     "strong",
     "expert",
     "master",
-]
+];

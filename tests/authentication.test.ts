@@ -1,5 +1,5 @@
 require('dotenv').config();
-import {loginBGA, loginBGADirect} from "../src/bga/authentication";
+import {loginBGA, loginBGADirect} from "../src/bga/puppeteer/authentication";
 import {loginTabletopia} from "../src/tabletopia/authentication";
 import {loginYucata} from "../src/Yucata/authentication";
 const puppeteer = require('puppeteer');

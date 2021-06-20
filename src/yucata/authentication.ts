@@ -1,7 +1,7 @@
 
-require('dotenv').config()
+require('dotenv').config();
 import { Page, Browser, PageEmittedEvents } from "puppeteer";
-import { loginPuppeteer } from "../utils"
+import { loginPuppeteer } from "../utils";
 
 /* This function will login to Yucata. Using the GUI avoids using NTLM authentication, which is more time
 than it's worth.
@@ -32,9 +32,9 @@ export async function loginYucata(username: string, password: string): Promise<[
         page.waitForSelector('#PlayerStatusContainer'), // on logged in page
         page.waitForSelector('#LogonContainer') // on login page
     ]);
-    console.log(page.url())
+    console.log(page.url());
     const success = page.url() !== "https://www.yucata.de/en/AuthenticationFailed";
-    return [browser, page, success]
+    return [browser, page, success];
 }
 
 /* This logs in directly by getting cookies from yucata.de and then logging in with them. 
@@ -44,7 +44,7 @@ DOES NOT WORK
 export async function loginYucataDirect(username: string, password: string): Promise<Page | null> {
     const resp = await fetch("https://www.yucata.de/", {
       "method": "GET"
-    })
-    const cookies = resp.headers.get('set-cookie')
+    });
+    const cookies = resp.headers.get('set-cookie');
     return null;
 }

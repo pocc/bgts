@@ -1,6 +1,7 @@
 import { Page } from 'puppeteer';
-import {makeBGACookies} from './authenticate'
-import {authenticatedFetch} from './utils'
+import {makeBGACookies} from './authenticate';
+import {authenticatedFetch as privilegedFetch} from './utils';
+import { BGAResponse } from '../../../index';
 
 const username = process.env.USER as string;
 const password = process.env.PASSWORD as string;
@@ -8,8 +9,12 @@ const password = process.env.PASSWORD as string;
 export class BoardGameArena {
     domain = "https://boardgamearena.com";
     cookies: string;
+    bgaID: number;
     constructor() {
-        makeBGACookies(username, password).then((cookies) => this.cookies = cookies)
+        makeBGACookies(username, password).then(([respText, cookies]) => {
+            console.log(respText);
+            this.cookies = cookies;
+        });
     }
 
     /**
@@ -19,48 +24,88 @@ export class BoardGameArena {
      * Sample good response: {"status":1,"data":"ok"}
      * Sample bad response: {"status":"0","error":"You have...","expected":1,"code":100}
      */    
-    async join_table(table_id: string): Promise<[boolean, string]> {
-        const url = this.domain + `/table/table/joingame.html?table=${table_id}`
-        const resp = await authenticatedFetch(url, this.cookies, "GET", {});
-        const text = await resp.text()
+    async joinTable(tableID: string): Promise<[boolean, string]> {
+        const url = this.domain + `/table/table/joingame.html?table=${tableID}`;
+        const resp = await privilegedFetch(url, this.cookies, "GET", {});
+        const text = await resp.text();
         try {
            const respJson = JSON.parse(text); 
             const success = respJson.hasOwnProperty('status') && respJson.status === 1;    
             return [success, text];
         } catch { // If the response wasn't parseable  
-            return [false, `When attempting to join table ${table_id} at ${url}, Unable to parse JSON from ${text}`]
+            return [false, `When attempting to join table ${tableID} at ${url}, Unable to parse JSON from ${text}`];
         }
     }
 
-    async createTable(game_id: number): Promise<[number, string]> {    
+    async createTable(gameID: number): Promise<[number, string]> {    
         let url = this.domain + '/table/table/createnew.html';
         const params = {
-            'game': game_id,
+            'game': gameID,
             'forceManual': 'true',
             'is_meeting': 'false',
             'dojo.preventCache': new Date().getTime()
         };
         url += '?' + new URLSearchParams(params as any).toString();
-        const resp = await authenticatedFetch(url, this.cookies, "GET", {});
-        let respJson: JSON;
+        const resp = await privilegedFetch(url, this.cookies, "GET", {});
+        let respJson;
         let err = '';
         try {
-            respJson = JSON.parse(await resp.text())
+            respJson = JSON.parse(await resp.text()) as BGAResponse;
         } catch (e) {
             return [-1, 'Unable to parse JSON from Board Game Arena.'];
         }
-        if (respJson['status'] === '0') {
-            err = respJson['error'];
+        if (respJson.status === '0') {
+            err = respJson.error;
         }
         if (err.includes('You have a game in progress')) {
             const matches = err.search(/^[\w !]*)[^\/]*([^\"]*)/g);
             err = matches[1] + 'Quit this game first (1 realtime game at a time): ' + this.domain + matches[2];
         }
-        const tableID = respJson['data']['table'];
+        const tableID = respJson.data.table;
         return [tableID, err];
     }
+    
+    /** This function returns the only real time table (you are limited to one)
+     * @returns The ID of the table or 0 if one is not found
+     */
+    async getRealtimeTable(): Promise<number> {
+        const url = this.domain + '/player';
+        const resp = await privilegedFetch(url, this.cookies, "GET", {});
+        const respText = await resp.text();
+        // Some version of "You are playing" or "Playing now at:"
+        const matches = respText.search(/[Pp]laying[^<]*<a href=\"\/table\?table=(\d+)/g);
+        if (matches === null) {
+            return 0;
+        }
+        const tableID = matches[1];
+        return tableID;
+    }
 
-    async findGameNameByPart(game_name_part: string) {}
+    /*  Quit all realtime tables for the given user ID */
+    async quitTable(tableID: number): Promise<boolean> {
+        // logger.debug('Quitting table ' + table_id);
+        let quitURL = this.domain + '/table/table/quitgame.html';
+        const params = {
+            'table': tableID,
+            'neutralized': 'true',
+            's': 'table_quitgame',
+            'dojo.preventCache': new Date().getTime(),
+        };
+        quitURL += '?' + new URLSearchParams(params as any).toString();
+        await privilegedFetch(quitURL, this.cookies, "GET", {});
+        return true;
+    }
+    
+    /* Logout of current session. A good idea if you do not plan on reusing cookies (they last 1 year)*/
+    async logout(): Promise<void> {
+        let url = this.domain + '/account/account/logout.html';
+        const Params = {'dojo.preventCache': new Date().getTime()};
+        url += '?' + new URLSearchParams(Params as any).toString();
+        await privilegedFetch(url, this.cookies, "GET", {});
+    }
+
+    async findGameNameByPart(gameNamePart: string): Promise<void> {
+        console.log("One day I will be a real function!");
     /* 
         /* Create a table and return its url. 201,0 is to set to normal mode.
         Partial game names are ok, like race for raceforthegalaxy.
@@ -103,5 +148,5 @@ export class BoardGameArena {
         game_name = games_found[0];
     game_id = lower_games[game_name];
         */
-    
+    }
 }
