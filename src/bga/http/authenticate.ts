@@ -3,8 +3,6 @@ import fetch from 'node-fetch';
 // Login and get new http cookies. Looking at the expiry dates, cookies last for a year.
 export async function makeBGACookies(username: string, password: string): Promise<[string, string]> {
     const loginUrl = 'https://boardgamearena.com/account/account/login.html';
-    const temp = 5;
-    console.log(temp);
     let postData = {
         "email": username,
         "password": password,

@@ -1,20 +1,24 @@
 import { Page } from 'puppeteer';
 import {makeBGACookies} from './authenticate';
 import {authenticatedFetch as privilegedFetch} from './utils';
-import { BGAResponse } from '../../../index';
+import { LoginResponse, TableCreationResponse } from '../bga';
 
-const username = process.env.USER as string;
-const password = process.env.PASSWORD as string;
 
 export class BoardGameArena {
     domain = "https://boardgamearena.com";
     cookies: string;
+    loginResponse: LoginResponse;
     bgaID: number;
-    constructor() {
-        makeBGACookies(username, password).then(([respText, cookies]) => {
-            console.log(respText);
-            this.cookies = cookies;
-        });
+    username: string;
+    password: string;
+    constructor(username: string, password: string) {
+        this.username = username;
+        this.password = password;
+    }
+    async instantiate() { // no async constructor
+        const [respText, cookies] = await makeBGACookies(this.username, this.password)
+        this.loginResponse = JSON.parse(respText) as LoginResponse;
+        this.cookies = cookies;
     }
 
     /**
@@ -50,19 +54,32 @@ export class BoardGameArena {
         let respJson;
         let err = '';
         try {
-            respJson = JSON.parse(await resp.text()) as BGAResponse;
+            respJson = JSON.parse(await resp.text()) as TableCreationResponse;
         } catch (e) {
             return [-1, 'Unable to parse JSON from Board Game Arena.'];
         }
-        if (respJson.status === '0') {
+        if (respJson.status === '0' && respJson.error) {
             err = respJson.error;
         }
         if (err.includes('You have a game in progress')) {
-            const matches = err.search(/^[\w !]*)[^\/]*([^\"]*)/g);
-            err = matches[1] + 'Quit this game first (1 realtime game at a time): ' + this.domain + matches[2];
+            const matches = /^[\w !]*)[^\/]*([^\"]*)/g.exec(err);
+            const errorPart = 'You cannot create another realtime game while you have one in progress. '
+            if (matches === null || matches.length < 3) {
+                err = errorPart + "This bot encountered another error while identifying which game this was."
+            } else {
+                err = errorPart + matches[1] + 'Quit this game first:' + this.domain + matches[2];
+            }
         }
-        const tableID = respJson.data.table;
-        return [tableID, err];
+        let TableID = 0;
+        if (!err) {
+            const tableIDStr = respJson.data.table;
+            try {
+                TableID = parseInt(tableIDStr)
+            } catch { 
+                err = "Unable to parse table ID." 
+            }
+        }
+        return [TableID, err];
     }
     
     /** This function returns the only real time table (you are limited to one)
@@ -73,15 +90,16 @@ export class BoardGameArena {
         const resp = await privilegedFetch(url, this.cookies, "GET", {});
         const respText = await resp.text();
         // Some version of "You are playing" or "Playing now at:"
-        const matches = respText.search(/[Pp]laying[^<]*<a href=\"\/table\?table=(\d+)/g);
-        if (matches === null) {
+        const matches = /[Pp]laying[^<]*<a href=\"\/table\?table=(\d+)/g.exec(respText);
+        if (matches === null || matches.length < 2) {
             return 0;
         }
-        const tableID = matches[1];
-        return tableID;
+        const tableIDStr = matches[1];
+        const TableID = parseInt(tableIDStr); // No need to trycatch this parse, because it matches number regex
+        return TableID;
     }
 
-    /*  Quit all realtime tables for the given user ID */
+    /*  Quit all realtime tables for the given table ID */
     async quitTable(tableID: number): Promise<boolean> {
         // logger.debug('Quitting table ' + table_id);
         let quitURL = this.domain + '/table/table/quitgame.html';
@@ -94,6 +112,13 @@ export class BoardGameArena {
         quitURL += '?' + new URLSearchParams(params as any).toString();
         await privilegedFetch(quitURL, this.cookies, "GET", {});
         return true;
+    }
+
+    /* Find and quit all realtime tables */
+    async quitRealtimeTables(): Promise<boolean> {
+        const tableID = await this.getRealtimeTable();
+        if (tableID === 0) return false
+        return this.quitTable(tableID)
     }
     
     /* Logout of current session. A good idea if you do not plan on reusing cookies (they last 1 year)*/
