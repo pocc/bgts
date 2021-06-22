@@ -1,9 +1,10 @@
 import { Page } from 'puppeteer';
+import {puppeteerCookie} from "../../../index"
 import {makeBGACookies} from './authenticate';
 import {authenticatedFetch, authenticatedFetch as privilegedFetch} from './utils';
-import { LoginResponse, TableCreationResponse } from '../bga';
+import { LoginResponse, TableCreationResp, messageResponse, gameRankings } from '../bga';
 import { tableStatus } from './noauth';
-import { TableData } from '../types/table';
+import { Table, TableData } from '../types/table';
 
 
 export class BoardGameArena {
@@ -14,6 +15,7 @@ export class BoardGameArena {
     bgaID: number;
     username: string;
     password: string;
+    successResp: string; // The expected response for many requests
     constructor(username: string, password: string) {
         this.username = username;
         this.password = password;
@@ -48,7 +50,7 @@ export class BoardGameArena {
         }
     }
 
-    async createTable(gameID: number): Promise<[number, TableData]> {    
+    async createTable(gameID: number): Promise<[string, TableData]> {    
         let url = this.domain + '/table/table/createnew.html';
         const params = {
             'game': gameID,
@@ -60,13 +62,18 @@ export class BoardGameArena {
         const resp = await privilegedFetch(url, this.cookies, "GET", {});
         let respJson;
         let err = '';
+        const respText = resp.text();
         try {
-            respJson = JSON.parse(await resp.text()) as TableCreationResponse;
+            respJson = JSON.parse(await respText) as TableCreationResp;
         } catch (e) {
             throw 'Unable to parse JSON from Board Game Arena.' + e;
         }
         if (respJson.status === '0' && respJson.error) {
-            err = "BGA gave an error on game creation:" + await resp.text();
+            err = "BGA gave an error on game creation."
+            if (err.includes("You have no access to this game")) {
+                err = " This means that your game ID is wrong."
+            }
+            err += await respText;
         }
         if (err.includes('You have a game in progress')) {
             const matches = /^[\w !]*)[^\/]*([^\"]*)/g.exec(err);
@@ -77,16 +84,10 @@ export class BoardGameArena {
                 err = errorPart + matches[1] + 'Quit this game first:' + this.domain + matches[2];
             }
         }
-        let TableID = 0;
         if (err) { throw err; }
         const tableIDStr = respJson.data.table;
-        try {
-            TableID = parseInt(tableIDStr, 10);
-        } catch { 
-            err = "Unable to parse table ID."; 
-        }
-        const tableResp = await tableStatus(TableID);
-        return [TableID, tableResp];
+        const tableResp = await tableStatus(tableIDStr);
+        return [tableIDStr, tableResp];
     }
     
     /** This function returns the only real time table (you are limited to one)
@@ -129,8 +130,44 @@ export class BoardGameArena {
     }
     
     // Accept an invite to a game
-    async acceptInvite(tableID: number): Promise<void> {
-        authenticatedFetch(this.domain + `/table?table=${tableID}&acceptinvit`, this.cookies, "GET", {});
+    async acceptInvite(tableID: number): Promise<boolean> {
+        const resp = await authenticatedFetch(this.domain + `/table?table=${tableID}&acceptinvit`, this.cookies, "GET", {});
+        return await resp.text() === this.successResp;
+    }
+
+    // WORK IN PROGRESS DOES NOT WORK
+    // Wait for the required number of players to join and then hit accept
+    async waitForPlayers(tableID: string, minPlayerCount: number): Promise<boolean> {
+        let resp = await privilegedFetch(this.domain + `/table?table=${tableID}`, this.cookies, "GET", {})
+        const countPlayers = (respText: string) => {
+            let playerCt = 1;
+            const results = respText.matchAll(/"active_player whiteblock "/g) as any
+            const results2 = /"active_player whiteblock "/g.exec(respText) as any
+            if (results !== null && results2 !== null) console.log(results[1], results[2], results2[1], results2[2])
+            // <a class="bgabutton bgabutton_always_big bgabutton_blue" id="ags_start_game_accept" href="#"><i class="fa fa-check"></i> <span>Accept</span></a>
+            else console.log('couldnt find it')
+            return playerCt
+        }
+        let respText = await resp.text();
+        let numPlayers = countPlayers(respText);
+        while (numPlayers < minPlayerCount) {
+            resp = await new Promise((resolve) => {
+                setTimeout(async () => {
+                    resolve( await privilegedFetch(this.domain + `/table?table=${tableID}`, this.cookies, "GET", {}));
+                }, 1000);
+            });
+            respText = await resp.text();
+            numPlayers = countPlayers(respText);
+        }
+        // Should be able to join the game if the number of players is good. Returns success/fail
+        return this.startGame(tableID)
+    }
+
+    // Refuse to play a game that everyone has agreed to play
+    async refuseGame(tableID: number): Promise<boolean> {
+        const params = `/table/table/refuseGameStart.html?table=${tableID}&dojo.preventCache=${new Date().getTime()}`
+        const resp = await authenticatedFetch(this.domain + params, this.cookies, "GET", {});
+        return await resp.text() === this.successResp;
     }
 
     // Message a table. Expected response is `{"status":1,"data":"ok"}`. Returns success/failure
@@ -142,27 +179,56 @@ export class BoardGameArena {
         };
         const url = this.domain + `/table/table/say.html?` + new URLSearchParams(params as any).toString();
         const resp = await authenticatedFetch(url, this.cookies, "POST", {});
-        return await resp.text() === `{"status":1,"data":"ok"}`;
+        return await resp.text() === this.successResp;
     }
 
-    // Get table text
-    async getTableMessages(tableID: number): Promise<string[]> {
-        const tableData = await tableStatus(tableID);
-        const serverID = tableData.data.gameserver;
-        const game_name = tableData.data.game_name;
-        const url = `${this.domain}/${serverID}/${game_name}?table=${tableID}`;
-        console.log(url);
-        const resp = await authenticatedFetch(url, this.cookies, "GET", {});
-        const respText = await resp.text();
-        // 3 parts of the message: 1st capture group captures user, 2nd captures message, 3rd captures time
-        const matches = respText.matchAll(/>([^>]*?)<\/span>\s*<!--PNE-->(.*?)<div class="msgtime">([^<]*)/g);
-        console.log(matches);
-        const messages = [];
-        for (const match of matches) {
-            messages.push(match[1] + match[2] + match[3]);
+    async getTableMessages(tableID: string): Promise<messageResponse> {
+        const baseUrl = this.domain + "/table/table/chatHistory.html"
+        const paramStr = `?type=table&id=${tableID}&table=${tableID}&dojo.preventCache=${new Date().getTime()}`
+        const resp = await privilegedFetch(baseUrl + paramStr, this.cookies, "GET", {});
+        const text = await resp.text();
+        try {
+            return await JSON.parse(text) as messageResponse
+        } catch (e) {
+            throw "Problem parsing text to JSON. Received text\n" + text;
         }
-        console.log(messages);
-        return messages;
+    }
+
+    // If you are game admin and want to start the game
+    async startGame(tableID: string): Promise<boolean> {
+        let url = this.domain + `/table/table/startgame.html`
+        url += `?table=${tableID}&autostart=true&dojo.preventCache=${new Date().getTime()}`
+        const resp = await authenticatedFetch(url, this.cookies, "GET", {})
+        return await resp.text() === this.successResp;
+    }
+
+    // If someone else is game admin and has started the game
+    async acceptGame(tableID: string): Promise<boolean> {
+        let url = this.domain + `/table/table/acceptGameStart`
+        url += `?table=${tableID}&dojo.preventCache=${new Date().getTime()}`
+        const resp = await authenticatedFetch(url, this.cookies, "GET", {})
+        return await resp.text() === this.successResp;
+    }
+
+    // Gets the top players for a game, including the champion.
+    async getRankings(gameID: number): Promise<gameRankings> {
+        let url = this.domain + `/gamepanel/gamepanel/getRanking.html`
+        // Add this in before dojo if it's an issue &table=${tableID}
+        url += `?game=${gameID}&start=0&mode=arena&dojo.preventCache=${new Date().getTime()}`
+        const resp = await authenticatedFetch(url, this.cookies, "GET", {})
+        const text = await resp.text();
+        try {
+            return await JSON.parse(text) as gameRankings
+        } catch (e) {
+            throw "Problem parsing text to JSON. Received text\n" + text;
+        }
+    }
+
+    async openTable(tableID: number): Promise<boolean> {
+        let url = this.domain + `/table/table/openTableNow.html`
+        url += `?table=${tableID}&dojo.preventCache=${new Date().getTime()}`
+        const resp = await authenticatedFetch(url, this.cookies, "GET", {})
+        return await resp.text() === this.successResp;
     }
 
     /* Logout of current session. A good idea if you do not plan on reusing cookies (they last 1 year)*/
@@ -171,6 +237,34 @@ export class BoardGameArena {
         const Params = {'dojo.preventCache': new Date().getTime()};
         url += '?' + new URLSearchParams(Params as any).toString();
         await privilegedFetch(url, this.cookies, "GET", {});
+    }
+
+    // Convert cookies from a string to a ...[JSON] that can be set by Puppeteer
+    // https://pptr.dev/#?product=Puppeteer&version=v10.0.0&show=api-pagesetcookiecookies
+    async generateCookies(): Promise<puppeteerCookie[]> {
+        let cookieList = this.cookies.split('; ');
+        cookieList = cookieList.filter(c => c.length > 0)
+        let cookies: puppeteerCookie[] = new Array(cookieList.length);
+        for (let i=0; i < cookieList.length; i++) {
+            const [name, value] = cookieList[i].split('=')
+            cookies[i] = {
+                name: name,
+                value: value,
+                path: "/",
+                domain: "boardgamearena.com",
+                url: "https://boardgamearena.com",
+                sameSite: "Strict",
+                expires: -1,
+                size: name.length + value.length,
+                httpOnly: false,
+                secure: false,
+                session: true,
+                sameParty: false,
+                sourceScheme: 'Secure',
+                sourcePort: 443
+            } as puppeteerCookie
+        }
+        return cookies;
     }
 
     async findGameNameByPart(gameNamePart: string): Promise<void> {

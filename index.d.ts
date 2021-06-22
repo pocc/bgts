@@ -12,6 +12,25 @@ export interface twoDeepJSON {
 
 export type OneDigit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 
+export type puppeteerCookie = {
+    // puppeteer requires
+    name: string,
+    value: string,
+    path: string,
+    domain: string,
+    expires: number,
+    httpOnly: boolean,
+    secure: boolean,
+    url: string, 
+    sameSite: "Strict" | "Lax",
+    // x5 puppeteer does not list, but were part of the request
+    size?: number,
+    session?: boolean,
+    sameParty?: boolean,
+    sourceScheme?: string,
+    sourcePort?: number
+}
+
 export interface Headers { // Can't seem to find node fetch's version
     headers: string | {
         "accept": string;

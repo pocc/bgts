@@ -61,7 +61,7 @@ const uuid = require('uuid');
 const USERNAME = process.env.USER;
 const PASSWORD = process.env.PASSWORD;
 const PLAYER_ID = process.env.PLAYER_ID as string;
-const NINE_MENS_MORRIS_GAME_ID = 1089;
+const NINE_MENS_MORRIS_GAME_ID = 1186;
 
 
 (async () => {
@@ -70,19 +70,19 @@ const NINE_MENS_MORRIS_GAME_ID = 1089;
     
     await bgaConnector.quitRealtimeTables(); // ensure that no previous tables interfere
     const [tableID, tableResp] = await bgaConnector.createTable(NINE_MENS_MORRIS_GAME_ID);
-    const bot = new NineMensMorris(bgaConnector.cookies, tableResp, parseInt(PLAYER_ID, 10) as number);
+    //const bot = new NineMensMorris(bgaConnector.cookies, tableResp, parseInt(PLAYER_ID, 10) as number);
+    await bgaConnector.getTableMessages(tableID);
 
-    /*
     const browser = await puppeteer.launch({headless:false});
     const [page] = await browser.pages();
-    let cookies = bgaConnector.cookies.split(';');
-    for (let i=0; i < cookies.length; i++) {
-        cookies[i] += '; path=/; domain=.boardgamearena.com; name=""; value="";'
-    }
-    await page.setCookie(cookies);
-    const resp = await page.goto(bga.domain + '/table?table=' + tableID.toString());
-    console.log(resp);
-    */
+    const cookies = await bgaConnector.generateCookies();
+    await page.setCookie(...cookies);
+    const resp = await page.goto(bgaConnector.domain + '/table?table=' + tableID.toString());
+    await bgaConnector.openTable(tableID);
+    // if you have the right number of players with realtime, it will autostart the game
+    const acceptButtonSelector = '#ags_start_game_accept'
+    await page.waitForSelector(acceptButtonSelector);
+    await page.click(acceptButtonSelector);
 })();
 
 // consists of xy adjacencies, where board is a 7x7 grid (bga model)
@@ -183,7 +183,7 @@ export class NineMensMorris {
         let whitePlayerID = "";
         let blackPlayerID = "";
         for (const stone in Object.keys(this.stones)) {
-            if (stone < "10") {
+            if (stone < "10") { // white player is 1-9, black player is 10-18
                 numWhitePieces += 1;
                 whitePlayerID = this.stones[stone].stone_player;
             } else {
