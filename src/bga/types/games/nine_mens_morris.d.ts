@@ -1,7 +1,7 @@
 
 // There are the 3 phases of the game. Placing pieces initially (9 for each side)
 // Moving the pieces, and then one person will eventually have 3 pieces (flying) and can force a draw.
-export type nmmGameStates = "placing pieces" | "moving pieces" | "flying"
+export type nmmGameStage = "placing pieces" | "moving pieces" | "flying"
 
 // Game data response interfaces
 export interface GameDataResp {

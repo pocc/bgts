@@ -14,7 +14,7 @@ describe('Test validation functions', () => {
     const tableID = 181822479; // random table where nmm was being played
     const tableResp = await tableStatus(tableID);
     const game = new nineMensMorris("", tableResp, 90754082); // user asdfg8901
-    await game.setGameState();
+    await game.setGameData();
     game.boardState = {
         '54': {
           stone_id: '1',
@@ -30,6 +30,6 @@ describe('Test validation functions', () => {
         }
     }
     const moves = await game.validMoves();
-    expect(moves).toStrictEqual({ '54': [ '53', '55', '64' ] })
+    expect(moves).toStrictEqual({'2':['11','14','17','22','24','26','33','34','35','41','42','43','45','46','47','53','54','55','62','64','66','71','74','77']})
   });
 });

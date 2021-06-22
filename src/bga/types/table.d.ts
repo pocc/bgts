@@ -120,6 +120,47 @@ export interface Award {
 }
 
 export interface playerID {
+    id: string;
+    table_status: string;
+    fullname: string;
+    avatar: string;
+    rank: number;
+    rank_victory: string;
+    arena_points: string;
+    table_order: string;
+    is_admin: string;
+    is_premium: string;
+    is_beginner: string;
+    is_confirmed: string;
+    status: string;
+    device: string;
+    decision?: any;
+    player_country: string;
+    gender: string;
+    grade: string;
+    played: string;
+    realPlayed: string;
+    prestige: string;
+    th_name?: any;
+    thumb_up: string;
+    thumb_down: string;
+    recent_games: string;
+    recent_leave: string;
+    recent_clock: string;
+    karma: string;
+    karma_alert: string;
+    victory: string;
+    hit: number;
+    ip: string;
+    languages_fluent?: any;
+    languages_normal: string;
+    ranksummary: number;
+    country: Country;
+    languages: string[];
+    freeaccount: boolean;
+    premiumaccount: boolean;
+    rank_no?: any;
+    same_ip: number;
     awards: Award[];
 }
 

@@ -52,7 +52,7 @@ Bad (when placing a stone where it cannot go)
 require('dotenv').config();
 import { authenticatedFetch } from "../http/utils";
 import { BoardGameArena } from '../http/create_game';
-import { GameDataResp, nmmStoneJSON, nmmBoardState, nmmStone, location, adjacencyMap, nmmGameStates } from '../types/games/nine_mens_morris';
+import { GameDataResp, nmmStoneJSON, nmmBoardState, nmmStone, location, adjacencyMap, nmmGameStage } from '../types/games/nine_mens_morris';
 import { TableData, playerID } from '../types/table';
 const bga = require("../http/create_game");
 const puppeteer = require('puppeteer');
@@ -130,7 +130,8 @@ export class nineMensMorris {
     stones: nmmStoneJSON;
     playerID: string;
     domain: string;
-    gameState: nmmGameStates;
+    gameStage: nmmGameStage;
+    flyingPlayers: string[]
 
     constructor(cookies: string, tableResp: TableData, playerID: number) {
         this.domain = "https://boardgamearena.com";
@@ -140,13 +141,14 @@ export class nineMensMorris {
         this.tableURL = this.domain + `/${tableResp.data.gameserver}/ninemensmorris?table=${this.tableID}`;
         this.playerID = playerID.toString();
         this.boardState = {};
-        this.gameState = "placing pieces";
+        this.gameStage = "placing pieces";
+        this.flyingPlayers = [];
     }
 
     /**
      * 
      */
-    async setGameState(): Promise<string> {
+    async setGameData(): Promise<string> {
         const resp = await authenticatedFetch(this.tableURL, this.cookies, "GET", {});
         const tableHTML = await resp.text();
         const gameData = /gameui\.completesetup\(.*({"players.*?}), /.exec(tableHTML)
@@ -154,6 +156,14 @@ export class nineMensMorris {
             try {
                 const gameDataJson = JSON.parse(gameData[1]) as GameDataResp;
                 this.stones = gameDataJson.stones;
+                this.setFlyingPlayers();
+                if (this.flyingPlayers) {
+                    this.gameStage = "flying"
+                } else {
+                    const gameStage = /must (place|move) a stone/.exec(tableHTML);
+                    if (!gameStage) return "Problem finding game stage in HTML."
+                    this.gameStage = gameStage[1].slice(0, -1) + 'ing pieces' as nmmGameStage
+                }
                 this.setBoardState(gameDataJson.stones);
                 return "";
             } catch {
@@ -162,6 +172,32 @@ export class nineMensMorris {
         } else {
             return "Unable to get game data from HTML: " + tableHTML;
         }
+    }
+
+    // Determines if one player has 3 pieces left, thus triggering flying stage
+    // Set the class variable if this is the case
+    setFlyingPlayers() {
+        let numWhitePieces = 0;
+        let numBlackPieces = 0;
+        let flyingPlayers: string[] = [];
+        let whitePlayerID = "";
+        let blackPlayerID = "";
+        for (const stone in Object.keys(this.stones)) {
+            if (stone < "10") {
+                numWhitePieces += 1;
+                whitePlayerID = this.stones[stone].stone_player
+            } else {
+                numBlackPieces += 1;
+                blackPlayerID = this.stones[stone].stone_player
+            }
+        }
+        if (numWhitePieces === 3) {
+            this.flyingPlayers.push(whitePlayerID)
+        }
+        if (numBlackPieces === 3) {
+            this.flyingPlayers.push(blackPlayerID)
+        }
+        this.flyingPlayers = flyingPlayers;
     }
 
     // Change the key of the stones json from the stone ID to xycoord
@@ -177,19 +213,45 @@ export class nineMensMorris {
     async validMoves(): Promise<adjacencyMap> {
         let moves: adjacencyMap = {};
         if (Object.keys(this.boardState).length === 0) {
-            const error = await this.setGameState();
+            const error = await this.setGameData();
             if (error) throw error
         }
-        for (const stoneID of Object.keys(this.stones)) {
-            if (this.stones[stoneID].stone_player === this.playerID) {
-                const stone = this.stones[stoneID];
-                const location = stone.stone_x + stone.stone_y;
-                moves[location] = [];
-                const adjacencies = ADJACENCIES[location]
-                for (const adj of adjacencies) {
-                    if (!this.boardState[adj]) { // if this location has no stone
-                        moves[location].push(adj); 
-                    }
+        const currPlayerStones = Object.keys(this.stones).filter(stoneID => 
+            this.stones[stoneID].stone_player === this.playerID
+        )
+        const isPlayerFirst = this.tableData.data.players[this.playerID].table_order === "1" // White as well
+        let playerStoneIDs = []
+        if (isPlayerFirst) {
+            playerStoneIDs = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+        } else {
+            playerStoneIDs = ["10", "11", "12", "13", "14", "15", "16", "17", "18"];
+        }
+
+        const unoccupiedLocations = LOCATIONS.filter(loc => !Object.keys(this.stones).includes(loc)) as location[];
+        // Any spot that isn't occupied by a stone is valid
+        if (this.gameStage === "placing pieces") { 
+            let unplacedCurrPlayerStoneIDs = playerStoneIDs.filter(loc => !currPlayerStones.includes(loc))
+            const nextStoneToPlace = unplacedCurrPlayerStoneIDs[0];
+            // Only one move needs to be registered because one piece will be placed
+            moves[nextStoneToPlace] = unoccupiedLocations;
+            return moves;
+        }
+        // flying players can place anywhere but moving players must move adjacent.
+        if (this.gameStage === "flying") { 
+            // Must use existing stones
+            for (const loc of currPlayerStones) {
+                moves[loc] = unoccupiedLocations; 
+            }
+            return moves;
+        }
+        for (const stoneID of currPlayerStones) {
+            const stone = this.stones[stoneID];
+            const location = stone.stone_x + stone.stone_y;
+            moves[location] = [];
+            const adjacencies = ADJACENCIES[location]
+            for (const adj of adjacencies) {
+                if (!this.boardState[adj]) { // if this location has no stone
+                    moves[stoneID].push(adj); 
                 }
             }
         }
