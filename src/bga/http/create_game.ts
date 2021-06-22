@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
 import {makeBGACookies} from './authenticate';
-import {authenticatedFetch as privilegedFetch} from './utils';
+import {authenticatedFetch, authenticatedFetch as privilegedFetch} from './utils';
 import { LoginResponse, TableCreationResponse } from '../bga';
 import { tableStatus } from './noauth';
 import { TableData } from '../types/table';
@@ -18,8 +18,8 @@ export class BoardGameArena {
         this.username = username;
         this.password = password;
     }
-    async instantiate() { // no async constructor
-        const [respText, receivedCookies] = await makeBGACookies(this.username, this.password)
+    async instantiate(): Promise<void> { // no async constructor
+        const [respText, receivedCookies] = await makeBGACookies(this.username, this.password);
         this.loginResponse = JSON.parse(respText) as LoginResponse;
         this.rcvdCookies = receivedCookies;
         // This regex takes out the expire, path, Max-Age, domain components or deleted cookies
@@ -70,20 +70,20 @@ export class BoardGameArena {
         }
         if (err.includes('You have a game in progress')) {
             const matches = /^[\w !]*)[^\/]*([^\"]*)/g.exec(err);
-            const errorPart = 'You cannot create another realtime game while you have one in progress. '
+            const errorPart = 'You cannot create another realtime game while you have one in progress. ';
             if (matches === null || matches.length < 3) {
-                err = errorPart + "This bot encountered another error while identifying which game this was."
+                err = errorPart + "This bot encountered another error while identifying which game this was.";
             } else {
                 err = errorPart + matches[1] + 'Quit this game first:' + this.domain + matches[2];
             }
         }
         let TableID = 0;
-        if (err) throw err
+        if (err) { throw err; }
         const tableIDStr = respJson.data.table;
         try {
-            TableID = parseInt(tableIDStr)
+            TableID = parseInt(tableIDStr, 10);
         } catch { 
-            err = "Unable to parse table ID." 
+            err = "Unable to parse table ID."; 
         }
         const tableResp = await tableStatus(TableID);
         return [TableID, tableResp];
@@ -102,7 +102,7 @@ export class BoardGameArena {
             return 0;
         }
         const tableIDStr = matches[1];
-        const TableID = parseInt(tableIDStr); // No need to trycatch this parse, because it matches number regex
+        const TableID = parseInt(tableIDStr, 10); // No need to trycatch this parse, because it matches number regex
         return TableID;
     }
 
@@ -124,10 +124,47 @@ export class BoardGameArena {
     /* Find and quit all realtime tables */
     async quitRealtimeTables(): Promise<boolean> {
         const tableID = await this.getRealtimeTable();
-        if (tableID === 0) return false
-        return this.quitTable(tableID)
+        if (tableID === 0) { return false; }
+        return this.quitTable(tableID);
     }
     
+    // Accept an invite to a game
+    async acceptInvite(tableID: number): Promise<void> {
+        authenticatedFetch(this.domain + `/table?table=${tableID}&acceptinvit`, this.cookies, "GET", {});
+    }
+
+    // Message a table. Expected response is `{"status":1,"data":"ok"}`. Returns success/failure
+    async messageTable(tableID: number, message: string): Promise<boolean> {
+        const params = {
+            table: tableID,
+            msg: message,
+            'dojo.preventCache': new Date().getTime(),
+        };
+        const url = this.domain + `/table/table/say.html?` + new URLSearchParams(params as any).toString();
+        const resp = await authenticatedFetch(url, this.cookies, "POST", {});
+        return await resp.text() === `{"status":1,"data":"ok"}`;
+    }
+
+    // Get table text
+    async getTableMessages(tableID: number): Promise<string[]> {
+        const tableData = await tableStatus(tableID);
+        const serverID = tableData.data.gameserver;
+        const game_name = tableData.data.game_name;
+        const url = `${this.domain}/${serverID}/${game_name}?table=${tableID}`;
+        console.log(url);
+        const resp = await authenticatedFetch(url, this.cookies, "GET", {});
+        const respText = await resp.text();
+        // 3 parts of the message: 1st capture group captures user, 2nd captures message, 3rd captures time
+        const matches = respText.matchAll(/>([^>]*?)<\/span>\s*<!--PNE-->(.*?)<div class="msgtime">([^<]*)/g);
+        console.log(matches);
+        const messages = [];
+        for (const match of matches) {
+            messages.push(match[1] + match[2] + match[3]);
+        }
+        console.log(messages);
+        return messages;
+    }
+
     /* Logout of current session. A good idea if you do not plan on reusing cookies (they last 1 year)*/
     async logout(): Promise<void> {
         let url = this.domain + '/account/account/logout.html';

@@ -1,5 +1,5 @@
 require('dotenv').config();
-import {nineMensMorris} from "../../src/bga/games/nine_mens_morris";
+import {NineMensMorris} from "../../src/bga/games/nine_mens_morris";
 import { tableStatus } from "../../src/bga/http/noauth";
 const puppeteer = require('puppeteer');
 
@@ -13,7 +13,7 @@ describe('Test validation functions', () => {
   test.concurrent('Test what valid moves are available', async () => {
     const tableID = 181822479; // random table where nmm was being played
     const tableResp = await tableStatus(tableID);
-    const game = new nineMensMorris("", tableResp, 90754082); // user asdfg8901
+    const game = new NineMensMorris("", tableResp, 90754082); // user asdfg8901
     await game.setGameData();
     game.boardState = {
         '54': {

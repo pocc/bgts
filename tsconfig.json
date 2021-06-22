@@ -1,12 +1,12 @@
 {
   "compilerOptions": {
-    "target": "es2017",
+    "target": "es2020",
     "module": "commonjs",
     "noImplicitAny": true,
     "strictNullChecks": true,
     "outDir": "build",
     "lib": [      
-      "es2017",
+      "es2020",
       "DOM"
     ],
   },

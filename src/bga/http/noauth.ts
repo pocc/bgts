@@ -5,10 +5,10 @@ import fetch from 'node-fetch';
 import { TableData as BGATableData } from '../types/table';
 
 
-const DOMAIN = "https://boardgamearena.com"
+const DOMAIN = "https://boardgamearena.com";
 
 export async function tableStatus(tableID: number): Promise<BGATableData> {
-    const url = `${DOMAIN}/table/table/tableinfos.html?id=${tableID}`
+    const url = `${DOMAIN}/table/table/tableinfos.html?id=${tableID}`;
     const resp = await fetch(url);
     try {
         const respJson = await resp.json();

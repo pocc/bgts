@@ -8,8 +8,7 @@ Where You is changed to <player name> if it's the other player's turn. This data
 
 White has stones 1-9, black has stones 10-18
 
-* [X] Convert stones to board state
-* [ ] Determine valid moves from board state
+* [ ] Figure out how to set cookies in puppeteer so that you can make requests with it
 * [ ] Choose move by 
     * [ ] Trying to block a Mill
     * [ ] Else try to create your own mill
@@ -61,19 +60,19 @@ const uuid = require('uuid');
 
 const USERNAME = process.env.USER;
 const PASSWORD = process.env.PASSWORD;
+const PLAYER_ID = process.env.PLAYER_ID as string;
 const NINE_MENS_MORRIS_GAME_ID = 1089;
 
-/*
+
 (async () => {
     const bgaConnector = new bga.BoardGameArena(USERNAME, PASSWORD);
     await bgaConnector.instantiate();
     
     await bgaConnector.quitRealtimeTables(); // ensure that no previous tables interfere
-    const [tableID, tableResp, err] = await bgaConnector.createTable(NINE_MENS_MORRIS_GAME_ID);
-    if (err) throw err;
+    const [tableID, tableResp] = await bgaConnector.createTable(NINE_MENS_MORRIS_GAME_ID);
+    const bot = new NineMensMorris(bgaConnector.cookies, tableResp, parseInt(PLAYER_ID, 10) as number);
 
-    const game = new nineMensMorris(bgaConnector.cookies, tableResp);
-
+    /*
     const browser = await puppeteer.launch({headless:false});
     const [page] = await browser.pages();
     let cookies = bgaConnector.cookies.split(';');
@@ -83,8 +82,8 @@ const NINE_MENS_MORRIS_GAME_ID = 1089;
     await page.setCookie(cookies);
     const resp = await page.goto(bga.domain + '/table?table=' + tableID.toString());
     console.log(resp);
+    */
 })();
-*/
 
 // consists of xy adjacencies, where board is a 7x7 grid (bga model)
 const ADJACENCIES: {[key: string]: location[]} =  {
@@ -112,16 +111,15 @@ const ADJACENCIES: {[key: string]: location[]} =  {
     "71": ["41", "74"],
     "74": ["71", "77", "64"],
     "77": ["47", "74"]
-}
+};
 
-const LOCATIONS = ["11", "14", "17", "22", "24", "26", "33", "34", "35", "41", "42", "43", "45", "46", "47", "53", "54", "55", "62", "64", "66", "71", "74", "77"]
-
+const LOCATIONS = Object.keys(ADJACENCIES);
 
 /** There are a limited number of moves that can be made in this game.
  * Essentially, you can move a piece, or propose a draw.
  * If 40 moves pass with no capture, 
  */
-export class nineMensMorris {
+export class NineMensMorris {
     cookies: string;
     tableID: string;
     tableURL: string;
@@ -131,17 +129,19 @@ export class nineMensMorris {
     playerID: string;
     domain: string;
     gameStage: nmmGameStage;
-    flyingPlayers: string[]
+    flyingPlayers: string[];
+    isFlyingOn: boolean; // Whether Wild/Flying is set to on for final stone
 
-    constructor(cookies: string, tableResp: TableData, playerID: number) {
+    constructor(_cookies: string, _tableResp: TableData, _playerID: number) {
         this.domain = "https://boardgamearena.com";
-        this.cookies = cookies;
-        this.tableData = tableResp;
-        this.tableID = tableResp.data.id;
-        this.tableURL = this.domain + `/${tableResp.data.gameserver}/ninemensmorris?table=${this.tableID}`;
-        this.playerID = playerID.toString();
+        this.cookies = _cookies;
+        this.tableData = _tableResp;
+        this.tableID = _tableResp.data.id;
+        this.tableURL = this.domain + `/${_tableResp.data.gameserver}/ninemensmorris?table=${this.tableID}`;
+        this.playerID = _playerID.toString();
         this.boardState = {};
         this.gameStage = "placing pieces";
+        this.isFlyingOn = _tableResp.data.options['100'].value === '2';
         this.flyingPlayers = [];
     }
 
@@ -151,18 +151,18 @@ export class nineMensMorris {
     async setGameData(): Promise<string> {
         const resp = await authenticatedFetch(this.tableURL, this.cookies, "GET", {});
         const tableHTML = await resp.text();
-        const gameData = /gameui\.completesetup\(.*({"players.*?}), /.exec(tableHTML)
+        const gameData = /gameui\.completesetup\(.*({"players.*?}), /.exec(tableHTML);
         if (gameData && gameData.length >= 2) {
             try {
                 const gameDataJson = JSON.parse(gameData[1]) as GameDataResp;
                 this.stones = gameDataJson.stones;
                 this.setFlyingPlayers();
                 if (this.flyingPlayers) {
-                    this.gameStage = "flying"
+                    this.gameStage = "flying";
                 } else {
                     const gameStage = /must (place|move) a stone/.exec(tableHTML);
-                    if (!gameStage) return "Problem finding game stage in HTML."
-                    this.gameStage = gameStage[1].slice(0, -1) + 'ing pieces' as nmmGameStage
+                    if (!gameStage) { return "Problem finding game stage in HTML."; }
+                    this.gameStage = gameStage[1].slice(0, -1) + 'ing pieces' as nmmGameStage;
                 }
                 this.setBoardState(gameDataJson.stones);
                 return "";
@@ -176,7 +176,7 @@ export class nineMensMorris {
 
     // Determines if one player has 3 pieces left, thus triggering flying stage
     // Set the class variable if this is the case
-    setFlyingPlayers() {
+    setFlyingPlayers(): void {
         let numWhitePieces = 0;
         let numBlackPieces = 0;
         let flyingPlayers: string[] = [];
@@ -185,26 +185,26 @@ export class nineMensMorris {
         for (const stone in Object.keys(this.stones)) {
             if (stone < "10") {
                 numWhitePieces += 1;
-                whitePlayerID = this.stones[stone].stone_player
+                whitePlayerID = this.stones[stone].stone_player;
             } else {
                 numBlackPieces += 1;
-                blackPlayerID = this.stones[stone].stone_player
+                blackPlayerID = this.stones[stone].stone_player;
             }
         }
         if (numWhitePieces === 3) {
-            this.flyingPlayers.push(whitePlayerID)
+            this.flyingPlayers.push(whitePlayerID);
         }
         if (numBlackPieces === 3) {
-            this.flyingPlayers.push(blackPlayerID)
+            this.flyingPlayers.push(blackPlayerID);
         }
         this.flyingPlayers = flyingPlayers;
     }
 
     // Change the key of the stones json from the stone ID to xycoord
-    setBoardState(stones: nmmStoneJSON) {
+    setBoardState(stones: nmmStoneJSON): void {
         for (const stoneID of Object.keys(stones)) {
-            const stone: nmmStone = stones[stoneID]
-            const xyCoord = stone.stone_x + stone.stone_y
+            const stone: nmmStone = stones[stoneID];
+            const xyCoord = stone.stone_x + stone.stone_y;
             this.boardState[xyCoord] = stone;
         }
     }
@@ -214,13 +214,13 @@ export class nineMensMorris {
         let moves: adjacencyMap = {};
         if (Object.keys(this.boardState).length === 0) {
             const error = await this.setGameData();
-            if (error) throw error
+            if (error) { throw error; }
         }
         const currPlayerStones = Object.keys(this.stones).filter(stoneID => 
             this.stones[stoneID].stone_player === this.playerID
-        )
-        const isPlayerFirst = this.tableData.data.players[this.playerID].table_order === "1" // White as well
-        let playerStoneIDs = []
+        );
+        const isPlayerFirst = this.tableData.data.players[this.playerID].table_order === "1"; // White as well
+        let playerStoneIDs = [];
         if (isPlayerFirst) {
             playerStoneIDs = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
         } else {
@@ -230,32 +230,33 @@ export class nineMensMorris {
         const unoccupiedLocations = LOCATIONS.filter(loc => !Object.keys(this.stones).includes(loc)) as location[];
         // Any spot that isn't occupied by a stone is valid
         if (this.gameStage === "placing pieces") { 
-            let unplacedCurrPlayerStoneIDs = playerStoneIDs.filter(loc => !currPlayerStones.includes(loc))
+            let unplacedCurrPlayerStoneIDs = playerStoneIDs.filter(loc => !currPlayerStones.includes(loc));
             const nextStoneToPlace = unplacedCurrPlayerStoneIDs[0];
             // Only one move needs to be registered because one piece will be placed
             moves[nextStoneToPlace] = unoccupiedLocations;
             return moves;
         }
         // flying players can place anywhere but moving players must move adjacent.
-        if (this.gameStage === "flying") { 
+        else if (Object.keys(currPlayerStones).length === 3 && this.isFlyingOn) { 
             // Must use existing stones
             for (const loc of currPlayerStones) {
                 moves[loc] = unoccupiedLocations; 
             }
             return moves;
         }
+        // Remaining game stage is moving pieces
         for (const stoneID of currPlayerStones) {
             const stone = this.stones[stoneID];
-            const location = stone.stone_x + stone.stone_y;
-            moves[location] = [];
-            const adjacencies = ADJACENCIES[location]
+            const stoneLoc = stone.stone_x + stone.stone_y;
+            moves[stoneLoc] = [];
+            const adjacencies = ADJACENCIES[stoneLoc];
             for (const adj of adjacencies) {
                 if (!this.boardState[adj]) { // if this location has no stone
                     moves[stoneID].push(adj); 
                 }
             }
         }
-        return moves
+        return moves;
     }
 
     /** Function to make a move in Nine Men's Morris. Returns success as boolean.
@@ -270,14 +271,14 @@ export class nineMensMorris {
             "id": stoneID,
             "table": this.tableID,
             "dojo.preventCache": new Date().getTime()
-        }
+        };
         const url = this.domain + route + '?' + new URLSearchParams(params as any).toString();
         const resp = await authenticatedFetch(url, this.cookies, "GET", {});
         try {
             const respJson = await resp.json();
-            return respJson.status === 1
+            return respJson.status === 1;
         } catch {
-            return false
+            return false;
         } 
     }
 
@@ -287,14 +288,14 @@ export class nineMensMorris {
     // Given a point, this array provides the adjacencies
     generateAdjacencies(): Array<Array<number>> {
         // better module that takes care of negative numbers
-        function mod(n: number, m: number) {
+        function mod(n: number, m: number): number {
             return ((n % m) + m) % m;
         }
-        let adj = new Array(24)
+        let adj = new Array(24);
         for (let y=0; 3 > y; y++) {
             for (let x=0; 8 > x; x++) {
                 let pointAdj = new Set();
-                if (y == 1 && mod(x,2) == 0) {
+                if (y === 1 && mod(x,2) === 0) {
                     pointAdj.add(x);
                     pointAdj.add(8*2+x);
                 } else {
@@ -305,7 +306,7 @@ export class nineMensMorris {
                 adj[8*y+x] = Array.from(pointAdj);
             }
         }
-        return adj
+        return adj;
     }
 
     /* Strategy for NMM
