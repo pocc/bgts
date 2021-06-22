@@ -26,8 +26,5 @@ export async function makeBGACookies(username: string, password: string): Promis
         console.log("No cookies found when trying to make BGA cookies.");
         return ["No cookies found", ""];
     }
-    // This regex takes out the expire, path, Max-Age, domain components or deleted cookies
-    // from a received set-cookie in the header that should not be sent as part of the cookie in the request 
-    const sendableCookies = receivedCookies.replace(/((expires|path|Max-Age)=[^;]*|\S+=deleted|domain=[^,]*)[;,]? ?/g, '');
-    return [respText, sendableCookies];
+    return [respText, receivedCookies];
 }

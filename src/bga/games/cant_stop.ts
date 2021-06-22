@@ -1,4 +1,6 @@
-/* To select a set of numbers,
+/* This game is premium, so postpone this bot.
+
+can't stop game ID: 11
 
 selector is chooseCombo_both_0 for first, chooseCombo_both_1 for 2nd, etc
 document.getElementById('chooseCombo_both_1').text provides "Progresses on 7 and 6"

@@ -2,11 +2,14 @@ import { Page } from 'puppeteer';
 import {makeBGACookies} from './authenticate';
 import {authenticatedFetch as privilegedFetch} from './utils';
 import { LoginResponse, TableCreationResponse } from '../bga';
+import { tableStatus } from './noauth';
+import { TableData } from '../types/table';
 
 
 export class BoardGameArena {
     domain = "https://boardgamearena.com";
     cookies: string;
+    rcvdCookies: string;
     loginResponse: LoginResponse;
     bgaID: number;
     username: string;
@@ -16,9 +19,13 @@ export class BoardGameArena {
         this.password = password;
     }
     async instantiate() { // no async constructor
-        const [respText, cookies] = await makeBGACookies(this.username, this.password)
+        const [respText, receivedCookies] = await makeBGACookies(this.username, this.password)
         this.loginResponse = JSON.parse(respText) as LoginResponse;
-        this.cookies = cookies;
+        this.rcvdCookies = receivedCookies;
+        // This regex takes out the expire, path, Max-Age, domain components or deleted cookies
+        // from a received set-cookie in the header that should not be sent as part of the cookie in the request 
+        const sendableCookies = receivedCookies.replace(/((expires|path|Max-Age)=[^;]*|\S+=deleted|domain=[^,]*)[;,]? ?/g, '');
+        this.cookies = sendableCookies;
     }
 
     /**
@@ -41,7 +48,7 @@ export class BoardGameArena {
         }
     }
 
-    async createTable(gameID: number): Promise<[number, string]> {    
+    async createTable(gameID: number): Promise<[number, TableData]> {    
         let url = this.domain + '/table/table/createnew.html';
         const params = {
             'game': gameID,
@@ -56,10 +63,10 @@ export class BoardGameArena {
         try {
             respJson = JSON.parse(await resp.text()) as TableCreationResponse;
         } catch (e) {
-            return [-1, 'Unable to parse JSON from Board Game Arena.'];
+            throw 'Unable to parse JSON from Board Game Arena.' + e;
         }
         if (respJson.status === '0' && respJson.error) {
-            err = respJson.error;
+            err = "BGA gave an error on game creation:" + await resp.text();
         }
         if (err.includes('You have a game in progress')) {
             const matches = /^[\w !]*)[^\/]*([^\"]*)/g.exec(err);
@@ -71,15 +78,15 @@ export class BoardGameArena {
             }
         }
         let TableID = 0;
-        if (!err) {
-            const tableIDStr = respJson.data.table;
-            try {
-                TableID = parseInt(tableIDStr)
-            } catch { 
-                err = "Unable to parse table ID." 
-            }
+        if (err) throw err
+        const tableIDStr = respJson.data.table;
+        try {
+            TableID = parseInt(tableIDStr)
+        } catch { 
+            err = "Unable to parse table ID." 
         }
-        return [TableID, err];
+        const tableResp = await tableStatus(TableID);
+        return [TableID, tableResp];
     }
     
     /** This function returns the only real time table (you are limited to one)

@@ -1,10 +1,10 @@
 import { OneDigit } from '../../index';
 
 export interface TableCreationResponse {
-    status: "0" | 1;  // Weirdness that BGA exhibits. 1 is success, "0" is fail
-    error?: string; // Error string will occur on "0" status, like login failure
+    status: "0" | 1;  // Weirdness that BGA exhibits. 1 is success, 0 is fail
+    error?: string; // Error string will occur on 0 status, like login failure
     code?: number ; // Error code on error
-    expected?: 1; // Will only be 1 as that is "expected good"
+    expected?: 1; // Will only be 1 as that is expected good
     data: {
         table: string // Table ID str number
     }
@@ -12,10 +12,10 @@ export interface TableCreationResponse {
 
 // Response that you get for the post request to login
 export interface LoginResponse {
-    status: "0" | 1;  // Weirdness that BGA exhibits. 1 is success, "0" is fail
-    error?: string; // Error string will occur on "0" status, like login failure
+    status: 0 | 1;  // Weirdness that BGA exhibits. 1 is success, 0 is fail
+    error?: string; // Error string will occur on 0 status, like login failure
     code?: number ; // Error code on error
-    expected?: 1; // Will only be 1 as that is "expected good"
+    expected?: 1; // Will only be 1 as that is expected good
     data: {
         success: boolean;
         redirect: string;
